@@ -1,0 +1,92 @@
+name: Build
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'scripts/matrix.sh'
+      - '.github/workflows/build.yml'
+
+env:
+  MIN_GDAL: "3.6"
+  IMAGE: ghcr.io/${{ github.repository }}
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - id: discover
+        run: |
+          MATRIX=$(MIN_GDAL="${MIN_GDAL}" ./scripts/matrix.sh)
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          MM=$(echo "${{ matrix.gdal_version }}" | cut -d. -f1,2)
+          {
+            echo "list<<TAGEOF"
+            echo "${IMAGE}:ubuntu-full-${{ matrix.gdal_version }}"
+            echo "${IMAGE}:ubuntu-full-${MM}"
+            if [ "${{ matrix.is_latest }}" = "true" ]; then
+              echo "${IMAGE}:ubuntu-full-latest"
+              echo "${IMAGE}:latest"
+            fi
+            echo "TAGEOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          build-args: |
+            BASE_IMAGE=ghcr.io/osgeo/gdal:ubuntu-full-${{ matrix.gdal_version }}
+          load: true
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha,scope=${{ matrix.gdal_version }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.gdal_version }}
+
+      - name: Smoke test
+        run: |
+          docker run --rm "${IMAGE}:ubuntu-full-${{ matrix.gdal_version }}" bash -c '
+            python3 -c "from osgeo import ogr; assert ogr.GetDriverByName(\"MSSQLSpatial\")" &&
+            odbcinst -q -d -n "ODBC Driver 18 for SQL Server"
+          '
+
+      - name: Push
+        run: |
+          while IFS= read -r t; do
+            [ -n "$t" ] && docker push "$t"
+          done <<< "${{ steps.tags.outputs.list }}"
