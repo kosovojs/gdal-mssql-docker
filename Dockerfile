@@ -11,3 +11,4 @@ RUN (apt-get update || true) \
     && (apt-get update || true) \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
+
