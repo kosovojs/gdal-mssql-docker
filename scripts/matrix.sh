@@ -23,7 +23,6 @@ echo "$RESPONSE" | jq -c --arg min "$MIN_GDAL" '
   | group_by([.parts[0], .parts[1]])
   | map(max_by(.parts[2]))
   | map(select(.parts[0:2] >= $min_parts))
-  | (max_by(.parts)) as $newest
-  | map({gdal_version: .version, is_latest: (. == $newest)})
-  | sort_by(.gdal_version | split(".") | map(tonumber))
+  | sort_by(.parts)
+  | map({gdal_version: .version})
 '

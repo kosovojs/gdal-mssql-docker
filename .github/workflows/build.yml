@@ -60,10 +60,6 @@ jobs:
             echo "list<<TAGEOF"
             echo "${IMAGE}:ubuntu-full-${{ matrix.gdal_version }}"
             echo "${IMAGE}:ubuntu-full-${MM}"
-            if [ "${{ matrix.is_latest }}" = "true" ]; then
-              echo "${IMAGE}:ubuntu-full-latest"
-              echo "${IMAGE}:latest"
-            fi
             echo "TAGEOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -90,3 +86,37 @@ jobs:
           while IFS= read -r t; do
             [ -n "$t" ] && docker push "$t"
           done <<< "${{ steps.tags.outputs.list }}"
+
+  update-latest:
+    needs: build
+    if: always() && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point ubuntu-full-latest/latest at the newest version that actually built
+        run: |
+          # Not every matrix entry necessarily builds (e.g. upstream not
+          # signing a repo for a given Ubuntu release yet) so "latest" is
+          # derived from what's actually in our own registry, not from
+          # upstream's newest version.
+          TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:${{ github.repository }}:pull&service=ghcr.io" | jq -r .token)
+          NEWEST=$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "https://ghcr.io/v2/${{ github.repository }}/tags/list?n=1000" \
+            | jq -r '.tags[] | select(test("^ubuntu-full-[0-9]+\\.[0-9]+\\.[0-9]+$")) | sub("^ubuntu-full-"; "")' \
+            | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          if [ -z "$NEWEST" ]; then
+            echo "No ubuntu-full-X.Y.Z tags found in ${IMAGE} yet, nothing to alias" >&2
+            exit 1
+          fi
+          echo "Newest successfully published version: $NEWEST"
+          docker buildx imagetools create "${IMAGE}:ubuntu-full-${NEWEST}" --tag "${IMAGE}:ubuntu-full-latest"
+          docker buildx imagetools create "${IMAGE}:ubuntu-full-${NEWEST}" --tag "${IMAGE}:latest"
