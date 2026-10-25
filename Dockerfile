@@ -2,7 +2,10 @@ ARG BASE_IMAGE=ghcr.io/osgeo/gdal:ubuntu-full-latest
 FROM ${BASE_IMAGE} AS utf8ctype
 
 # Build against the runtime's libc, including for older supported Ubuntu images.
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
+# Upstream images may contain stale third-party repositories. Ubuntu's package
+# indexes can still refresh; installation itself must succeed.
+RUN (apt-get update || true) \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc libc6-dev
 COPY utf8_ctype.c /src/utf8_ctype.c
 COPY tests/utf8_ctype.c /src/test_utf8_ctype.c
 RUN gcc -shared -fPIC -O2 -Wall -Wextra -Werror -o /src/libutf8ctype.so /src/utf8_ctype.c \
@@ -14,12 +17,13 @@ FROM ${BASE_IMAGE}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN (apt-get update || true) \
-    && apt-get install -y --no-install-recommends curl gnupg2 ca-certificates \
-    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
     && . /etc/os-release \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/${VERSION_ID}/prod ${VERSION_CODENAME} main" > /etc/apt/sources.list.d/mssql-release.list \
+    && curl -fsSL "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" -o /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
     && (apt-get update || true) \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+    && rm /tmp/packages-microsoft-prod.deb \
     && rm -rf /var/lib/apt/lists/*
 
 # msodbcsql interprets narrow SQL text using the process LC_CTYPE. GDAL's CLI

@@ -10,6 +10,9 @@ Built on top of the official [`ghcr.io/osgeo/gdal`](https://github.com/OSGeo/gda
 (`ubuntu-small` and the Alpine variants are not, so `MSSQLSpatial` can never
 work there — not something we can fix by installing a driver on top).
 
+Microsoft's repository configuration package supplies the signing key for
+each Ubuntu release, including the newer key used by Ubuntu 26.04 images.
+
 ## Usage
 
 ```
@@ -44,13 +47,6 @@ GDAL command-line tools do not call `setlocale()`, so setting `LANG` or
 The library applies to dynamically linked processes throughout the image.
 Overriding `LD_PRELOAD` replaces this default. Image builds check UTF-8 to
 UTF-16LE conversion and unchanged numeric formatting without a SQL Server.
-
-## Known gaps
-
-- **GDAL 3.13** (built on Ubuntu 26.04 "resolute") currently can't get
-  `msodbcsql18` — Microsoft hasn't published a trusted signing key for that
-  Ubuntu release yet. That one image tag will start building automatically
-  the moment Microsoft catches up; no action needed here.
 
 ## Building locally
 
