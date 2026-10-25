@@ -8,6 +8,8 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'utf8_ctype.c'
+      - 'tests/**'
       - 'scripts/matrix.sh'
       - '.github/workflows/build.yml'
 

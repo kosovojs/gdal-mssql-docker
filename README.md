@@ -30,7 +30,20 @@ Latest patch of every GDAL major.minor line upstream currently publishes,
 down to the floor set by `MIN_GDAL` in
 [`.github/workflows/build.yml`](.github/workflows/build.yml) (currently
 `3.6`). Rebuilt weekly (Monday 03:00 UTC), plus on every push that touches
-the Dockerfile or the discovery script.
+the Dockerfile, locale library, tests, workflow, or discovery script.
+
+## Non-ASCII SQL text
+
+The image preloads a small library that sets `LC_CTYPE=C.UTF-8` at process
+startup. This lets Microsoft's ODBC driver interpret UTF-8 SQL text correctly,
+including non-ASCII literals in `-sql` and `-where` (for example, `'Rīga'`).
+GDAL command-line tools do not call `setlocale()`, so setting `LANG` or
+`LC_ALL` alone does not fix this. Other locale categories stay unchanged;
+`LC_NUMERIC` remains `C` for decimal-point formatting and parsing.
+
+The library applies to dynamically linked processes throughout the image.
+Overriding `LD_PRELOAD` replaces this default. Image builds check UTF-8 to
+UTF-16LE conversion and unchanged numeric formatting without a SQL Server.
 
 ## Known gaps
 
